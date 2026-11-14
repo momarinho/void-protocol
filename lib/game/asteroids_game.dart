@@ -1,3 +1,4 @@
+import 'dart:collection' show ListQueue;
 import 'dart:math' as math;
 import 'package:flame/game.dart';
 import 'package:flame/camera.dart';
@@ -65,8 +66,7 @@ import 'ending_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:void_protocol/services/api_service.dart';
 import 'package:void_protocol/services/localization_service.dart';
-import 'dart:io' as io;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 class BossCinematicData {
   final String title;
@@ -166,6 +166,11 @@ class AsteroidsGame extends FlameGame
   final Set<ChestComponent> activeChests = <ChestComponent>{};
   final Set<CargoWreckComponent> activeCargoWrecks = <CargoWreckComponent>{};
   final Set<CosmicNebulaComponent> activeNebulae = <CosmicNebulaComponent>{};
+  int activeBiomeBackdropCount = 0;
+  final ListQueue<FloatingTextComponent> _activeFloatingTexts =
+      ListQueue<FloatingTextComponent>();
+  final math.Random _shakeRandom = math.Random();
+  final math.Random _combatTextRandom = math.Random();
 
   // Real-time Engine FPS & Diagnostics
   double currentFps = 60.0;
@@ -184,7 +189,10 @@ class AsteroidsGame extends FlameGame
 
   final Set<LogicalKeyboardKey> keysPressed = {};
 
-  bool get isMobile => !kIsWeb && (io.Platform.isAndroid || io.Platform.isIOS);
+  bool get isMobile =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
   bool mobileShootPressed = false;
   bool mobileDashPressed = false;
   bool showTouchControls = false;
@@ -2146,7 +2154,6 @@ class AsteroidsGame extends FlameGame
   @override
   void render(Canvas canvas) {
     if (shakeTimer > 0) {
-      final random = math.Random();
       final progress = (shakeTimer / math.max(0.001, shakeDuration)).clamp(
         0.0,
         1.0,
@@ -2155,10 +2162,10 @@ class AsteroidsGame extends FlameGame
           progress *
           progress; // Decaimento quadrático de trauma (Nova Drift benchmark)
       final currentIntensity = shakeIntensity * decay;
-      final dx = (-1.0 + random.nextDouble() * 2.0) * currentIntensity;
-      final dy = (-1.0 + random.nextDouble() * 2.0) * currentIntensity;
+      final dx = (-1.0 + _shakeRandom.nextDouble() * 2.0) * currentIntensity;
+      final dy = (-1.0 + _shakeRandom.nextDouble() * 2.0) * currentIntensity;
       final angle =
-          (-1.0 + random.nextDouble() * 2.0) * (currentIntensity * 0.0012);
+          (-1.0 + _shakeRandom.nextDouble() * 2.0) * (currentIntensity * 0.0012);
 
       canvas.save();
       final cx = size.x * 0.5;
@@ -2669,21 +2676,27 @@ class AsteroidsGame extends FlameGame
     double fontSize = 14.0,
     Vector2? velocity,
   }) {
-    final existingTexts = world.children
-        .whereType<FloatingTextComponent>()
-        .toList();
-    if (existingTexts.length >= maxActiveFloatingTexts) {
-      existingTexts.first.removeFromParent();
+    final cap = kIsWeb ? 14 : maxActiveFloatingTexts;
+    while (_activeFloatingTexts.isNotEmpty &&
+        (!_activeFloatingTexts.first.isMounted &&
+            _activeFloatingTexts.first.timer > 0)) {
+      _activeFloatingTexts.removeFirst();
     }
-    world.add(
-      FloatingTextComponent(
-        position: position.clone(),
-        text: text,
-        color: color,
-        fontSize: fontSize,
-        velocity: velocity,
-      ),
+    if (_activeFloatingTexts.length >= cap) {
+      final oldest = _activeFloatingTexts.removeFirst();
+      if (oldest.isMounted) {
+        oldest.removeFromParent();
+      }
+    }
+    final component = FloatingTextComponent(
+      position: position.clone(),
+      text: text,
+      color: color,
+      fontSize: fontSize,
+      velocity: velocity,
     );
+    _activeFloatingTexts.addLast(component);
+    world.add(component);
   }
 
   void _triggerRelicCritSynergy(Vector2 pos) {
@@ -2725,19 +2738,18 @@ class AsteroidsGame extends FlameGame
       textColor = const Color(0xFFFF8A80); // Soft Coral
     }
 
-    final rng = math.Random();
     final text = isCritical ? '★ ${damage.toInt()}!' : '${damage.toInt()}';
     final fontSize = isCritical ? 14.5 : 11.5;
     final vel = Vector2(
-      (rng.nextDouble() - 0.5) * 44.0,
-      -60.0 - rng.nextDouble() * 25.0,
+      (_combatTextRandom.nextDouble() - 0.5) * 44.0,
+      -60.0 - _combatTextRandom.nextDouble() * 25.0,
     );
 
     spawnFloatingText(
       position +
           Vector2(
-            (rng.nextDouble() - 0.5) * 16.0,
-            (rng.nextDouble() - 0.5) * 12.0,
+            (_combatTextRandom.nextDouble() - 0.5) * 16.0,
+            (_combatTextRandom.nextDouble() - 0.5) * 12.0,
           ),
       text,
       color: textColor,

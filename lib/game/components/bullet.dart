@@ -25,6 +25,10 @@ class BulletComponent extends PositionComponent
   final Weapon? weaponSource;
   double _evolvedTrailTimer = 0.0;
 
+  static final Paint _evolvedCoronaPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..blendMode = BlendMode.plus;
+
   BulletComponent({
     required Vector2 position,
     required this.radius,
@@ -249,12 +253,10 @@ class BulletComponent extends PositionComponent
     // Sem cor explícita, o tiro assume a cor-tema da valquíria piloto.
     final tint = color ?? game.selectedValkyrie.primaryColor;
 
-    // Sprint 51: Corona de energia luminosa para disparos super-evoluídos
+    // Sprint 51: Corona de energia luminosa para disparos super-evoluídos (Zero-GC + WebGL-safe)
     if (weaponSource?.isEvolved == true) {
-      final coronaPaint = Paint()
-        ..color = tint.withValues(alpha: 0.45)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0);
-      canvas.drawCircle(Offset.zero, radius * 1.5, coronaPaint);
+      _evolvedCoronaPaint.color = tint.withValues(alpha: 0.28);
+      canvas.drawCircle(Offset.zero, radius * 2.2, _evolvedCoronaPaint);
     }
 
     Glow.orb(canvas, Offset.zero, radius * 0.85, tint);

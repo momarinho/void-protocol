@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flame/components.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:void_protocol/constants.dart';
 import 'package:void_protocol/game/asteroids_game.dart';
@@ -56,6 +57,15 @@ class ProceduralCosmicNebulaComponent extends Component
   late final List<NebulaLobe> _clusterB;
   late final Path _filamentPathA;
   late final Path _filamentPathB;
+
+  Color? _cachedPrimary;
+  Color? _cachedSecondary;
+  final List<Shader> _clusterAShaders = [];
+  final List<Shader> _clusterBShaders = [];
+  static final Rect _unitCircleRect = Rect.fromCircle(
+    center: Offset.zero,
+    radius: 1.0,
+  );
 
   ProceduralCosmicNebulaComponent() {
     priority = -38; // Acima de Starfield (-40) e abaixo de SpaceDust (-35)
@@ -203,51 +213,68 @@ class ProceduralCosmicNebulaComponent extends Component
     _time += dt;
   }
 
+  void _ensureShaders(Color primary, Color secondary) {
+    if (_cachedPrimary == primary && _cachedSecondary == secondary) return;
+    _cachedPrimary = primary;
+    _cachedSecondary = secondary;
+    _clusterAShaders.clear();
+    _clusterBShaders.clear();
+
+    for (final lobe in _clusterA) {
+      final color = lobe.isSecondaryColor ? secondary : primary;
+      final alpha = lobe.alphaMultiplier.clamp(0.0, 1.0);
+      _clusterAShaders.add(
+        RadialGradient(
+          colors: [
+            color.withValues(alpha: alpha),
+            color.withValues(alpha: alpha * 0.40),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.45, 1.0],
+        ).createShader(_unitCircleRect),
+      );
+    }
+
+    for (final lobe in _clusterB) {
+      final color = lobe.isSecondaryColor ? primary : secondary;
+      final alpha = lobe.alphaMultiplier.clamp(0.0, 1.0);
+      _clusterBShaders.add(
+        RadialGradient(
+          colors: [
+            color.withValues(alpha: alpha),
+            color.withValues(alpha: alpha * 0.40),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.45, 1.0],
+        ).createShader(_unitCircleRect),
+      );
+    }
+  }
+
   void _renderCluster(
     Canvas canvas,
     List<NebulaLobe> lobes,
+    List<Shader> shaders,
     Path filamentPath,
     Color primaryColor,
     Color secondaryColor,
     double pulse,
   ) {
-    for (int i = 0; i < lobes.length; i++) {
+    final maxLobes = kIsWeb ? math.min(lobes.length, 4) : lobes.length;
+    for (int i = 0; i < maxLobes; i++) {
       final lobe = lobes[i];
       final currentAngle = lobe.angle + _time * lobe.rotationSpeed;
       final lx = math.cos(currentAngle) * lobe.distance;
       final ly = math.sin(currentAngle) * lobe.distance;
 
-      final color = lobe.isSecondaryColor ? secondaryColor : primaryColor;
-      final alpha = (lobe.alphaMultiplier * pulse).clamp(0.0, 1.0);
-
       final paint = lobe.isSecondaryColor ? _lobePaintB : _lobePaintA;
-      paint.shader =
-          RadialGradient(
-            colors: [
-              color.withValues(alpha: alpha),
-              color.withValues(alpha: alpha * 0.40),
-              Colors.transparent,
-            ],
-            stops: const [0.0, 0.45, 1.0],
-          ).createShader(
-            Rect.fromCenter(
-              center: Offset(lx, ly),
-              width: lobe.baseRadiusX * 2,
-              height: lobe.baseRadiusY * 2,
-            ),
-          );
+      paint.shader = shaders[i];
 
       canvas.save();
       canvas.translate(lx, ly);
       canvas.rotate(currentAngle * 0.5);
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset.zero,
-          width: lobe.baseRadiusX * 2,
-          height: lobe.baseRadiusY * 2,
-        ),
-        paint,
-      );
+      canvas.scale(lobe.baseRadiusX * pulse, lobe.baseRadiusY * pulse);
+      canvas.drawCircle(Offset.zero, 1.0, paint);
       canvas.restore();
     }
 
@@ -284,6 +311,7 @@ class ProceduralCosmicNebulaComponent extends Component
     final sector = game.currentSector;
     final primary = sector.primaryColor;
     final secondary = sector.secondaryColor;
+    _ensureShaders(primary, secondary);
 
     // Respiração orgânica do gás estelar
     final pulseA = 1.0 + 0.12 * math.sin(_time * 0.35);
@@ -306,6 +334,7 @@ class ProceduralCosmicNebulaComponent extends Component
     _renderCluster(
       canvas,
       _clusterA,
+      _clusterAShaders,
       _filamentPathA,
       primary,
       secondary,
@@ -330,6 +359,7 @@ class ProceduralCosmicNebulaComponent extends Component
     _renderCluster(
       canvas,
       _clusterB,
+      _clusterBShaders,
       _filamentPathB,
       secondary,
       primary,

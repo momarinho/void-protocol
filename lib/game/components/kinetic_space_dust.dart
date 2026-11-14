@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flame/components.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:void_protocol/constants.dart';
 import 'package:void_protocol/game/asteroids_game.dart';
@@ -174,8 +175,9 @@ class KineticSpaceDustComponent extends Component
     final isStretching =
         speedSq > 225.0; // Velocidade > 15 px/s estica os motes
     final starColor = game.currentSector.starColor;
+    final step = kIsWeb ? 2 : 1;
 
-    for (int i = 0; i < motes.length; i++) {
+    for (int i = 0; i < motes.length; i += step) {
       final mote = motes[i];
       final mx = mote.x * scaleX;
       final my = mote.y * scaleY;
@@ -212,14 +214,16 @@ class KineticSpaceDustComponent extends Component
           _streakPaint,
         );
 
-        // Ponto brilhante na cabeça do traço
-        _motePaint.color = Colors.white.withValues(alpha: alpha);
-        canvas.drawCircle(Offset(mx, my), mote.size * 0.6, _motePaint);
+        // Ponto brilhante na cabeça do traço (pulado no Web para reduzir draw calls pela metade)
+        if (!kIsWeb) {
+          _motePaint.color = Colors.white.withValues(alpha: alpha);
+          canvas.drawCircle(Offset(mx, my), mote.size * 0.6, _motePaint);
+        }
       } else {
         // Em baixa velocidade: partícula cósmica esférica suave com micro-halo aditivo
         final center = Offset(mx, my);
 
-        if (mote.depth > 0.7) {
+        if (!kIsWeb && mote.depth > 0.7) {
           _haloPaint.color = starColor.withValues(alpha: alpha * 0.22);
           canvas.drawCircle(center, mote.size * 2.4, _haloPaint);
         }

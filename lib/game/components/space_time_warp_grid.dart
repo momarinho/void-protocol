@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:void_protocol/constants.dart';
 import 'package:void_protocol/game/asteroids_game.dart';
 import 'package:void_protocol/game/components/enemy_ship.dart';
-import 'package:void_protocol/game/components/sector_boss.dart';
 import 'package:void_protocol/game/components/singularity_vortex.dart';
 
 /// Ponto de coordenadas da grade espacial com suporte a distorção gravitacional
@@ -32,13 +31,16 @@ class SpaceTimeWarpGridComponent extends Component
   // Matriz pré-alocada de nós de coordenadas
   late final List<List<WarpGridPoint>> _gridNodes;
 
-  // Zero-GC Cached Paints
+  // Zero-GC Cached Paints, Path & Wells buffer
   static final Paint _gridLinePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
   static final Paint _gravityNodePaint = Paint()
     ..style = PaintingStyle.fill
     ..blendMode = BlendMode.plus;
+  static final Path _gridPath = Path();
+  final List<({double x, double y, double radius, double strength})>
+  _gravityWells = [];
 
   SpaceTimeWarpGridComponent() {
     priority =
@@ -79,9 +81,9 @@ class SpaceTimeWarpGridComponent extends Component
     final startWorldY =
         (viewTop / gridCellSize).floor() * gridCellSize - gridCellSize * 2;
 
-    // 1. Coleta fontes ativas de gravidade próximas à tela (buracos negros, asteroides gigantes e chefes)
-    final gravityWells =
-        <({double x, double y, double radius, double strength})>[];
+    // 1. Coleta fontes ativas de gravidade próximas à tela (Zero-GC buffer)
+    _gravityWells.clear();
+    final gravityWells = _gravityWells;
 
     try {
       // Buracos negros / vórtices de singularidade
@@ -116,19 +118,17 @@ class SpaceTimeWarpGridComponent extends Component
         }
       }
 
-      // Chefes de setor (inércia gravitacional massiva)
-      for (final child in game.world.children) {
-        if (child is SectorBoss) {
-          final dx = (child.position.x - camPos.x).abs();
-          final dy = (child.position.y - camPos.y).abs();
-          if (dx < width * 0.85 && dy < height * 0.85) {
-            gravityWells.add((
-              x: child.position.x,
-              y: child.position.y,
-              radius: 520.0,
-              strength: 125.0,
-            ));
-          }
+      // Chefes de setor via registry O(1)
+      for (final boss in game.activeBosses) {
+        final dx = (boss.position.x - camPos.x).abs();
+        final dy = (boss.position.y - camPos.y).abs();
+        if (dx < width * 0.85 && dy < height * 0.85) {
+          gravityWells.add((
+            x: boss.position.x,
+            y: boss.position.y,
+            radius: 520.0,
+            strength: 125.0,
+          ));
         }
       }
 
@@ -188,36 +188,32 @@ class SpaceTimeWarpGridComponent extends Component
       }
     }
 
-    // 3. Renderiza as linhas vetoriais interligadas da grade
+    // 3. Renderiza as linhas vetoriais interligadas em um único drawPath (Zero-GC + 1 draw call)
     final sectorColor = game.currentSector.primaryColor;
     _gridLinePaint.color = sectorColor.withValues(alpha: 0.065);
     _gridLinePaint.strokeWidth = 1.0;
 
-    // Linhas horizontais distorcidas
+    _gridPath.reset();
+    // Polilinhas horizontais distorcidas
     for (int r = 0; r < rows; r++) {
-      for (int c = 0; c < cols - 1; c++) {
-        final p1 = _gridNodes[r][c];
-        final p2 = _gridNodes[r][c + 1];
-        canvas.drawLine(
-          Offset(p1.warpedX, p1.warpedY),
-          Offset(p2.warpedX, p2.warpedY),
-          _gridLinePaint,
-        );
+      final first = _gridNodes[r][0];
+      _gridPath.moveTo(first.warpedX, first.warpedY);
+      for (int c = 1; c < cols; c++) {
+        final p = _gridNodes[r][c];
+        _gridPath.lineTo(p.warpedX, p.warpedY);
       }
     }
 
-    // Linhas verticais distorcidas
+    // Polilinhas verticais distorcidas
     for (int c = 0; c < cols; c++) {
-      for (int r = 0; r < rows - 1; r++) {
-        final p1 = _gridNodes[r][c];
-        final p2 = _gridNodes[r + 1][c];
-        canvas.drawLine(
-          Offset(p1.warpedX, p1.warpedY),
-          Offset(p2.warpedX, p2.warpedY),
-          _gridLinePaint,
-        );
+      final first = _gridNodes[0][c];
+      _gridPath.moveTo(first.warpedX, first.warpedY);
+      for (int r = 1; r < rows; r++) {
+        final p = _gridNodes[r][c];
+        _gridPath.lineTo(p.warpedX, p.warpedY);
       }
     }
+    canvas.drawPath(_gridPath, _gridLinePaint);
 
     // Micro-nós luminosos nas interseções de nós sob deformação gravitacional ativa
     for (int i = 0; i < gravityWells.length; i++) {

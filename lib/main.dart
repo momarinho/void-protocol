@@ -1,4 +1,5 @@
 import 'package:flame/game.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'game/asteroids_game.dart';
@@ -23,12 +24,17 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await I18n.init();
   await AchievementService.load();
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
-  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  if (kIsWeb) {
+    // Flutter Web locks to orientations.first when non-empty; empty list unlocks portrait + landscape in installed PWAs.
+    await SystemChrome.setPreferredOrientations([]);
+  } else {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
   runApp(const MyApp());
 }
 

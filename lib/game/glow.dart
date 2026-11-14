@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Helpers de brilho neon usados por naves, tiros, meteoros e partículas.
 ///
@@ -86,12 +87,18 @@ class Glow {
     double width = 2.0,
     double intensity = 1.0,
   }) {
-    if (enabled) {
+    if (enabled && !kIsWeb) {
       _heroPaint.color = color.withValues(alpha: 0.55 * intensity);
       _heroPaint.strokeWidth = width * 3.2;
       canvas.drawPath(path, _heroPaint);
     }
-    strokePath(canvas, path, color, width: width, intensity: enabled ? intensity * 0.6 : 0);
+    strokePath(
+      canvas,
+      path,
+      color,
+      width: width,
+      intensity: enabled ? (kIsWeb ? intensity * 0.9 : intensity * 0.6) : 0,
+    );
   }
 
   /// Contorno circular com halo neon (anéis de explosão, escudos etc.).
@@ -103,8 +110,18 @@ class Glow {
     double width = 2.0,
     double intensity = 1.0,
   }) {
-    final path = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
-    strokePath(canvas, path, color, width: width, intensity: intensity);
+    if (enabled) {
+      _halo1.color = color.withValues(alpha: 0.10 * intensity);
+      _halo1.strokeWidth = width * 5.5;
+      canvas.drawCircle(center, radius, _halo1);
+
+      _halo2.color = color.withValues(alpha: 0.22 * intensity);
+      _halo2.strokeWidth = width * 2.6;
+      canvas.drawCircle(center, radius, _halo2);
+    }
+    _coreStroke.color = color;
+    _coreStroke.strokeWidth = width;
+    canvas.drawCircle(center, radius, _coreStroke);
   }
 
   static void drawGlowCircle(
@@ -125,8 +142,10 @@ class Glow {
     double intensity = 1.0,
   }) {
     if (enabled) {
-      _orbHalo1.color = color.withValues(alpha: 0.07 * intensity);
-      canvas.drawCircle(center, radius * 3.4, _orbHalo1);
+      if (!kIsWeb) {
+        _orbHalo1.color = color.withValues(alpha: 0.07 * intensity);
+        canvas.drawCircle(center, radius * 3.4, _orbHalo1);
+      }
 
       _orbHalo2.color = color.withValues(alpha: 0.18 * intensity);
       canvas.drawCircle(center, radius * 2.2, _orbHalo2);
@@ -149,7 +168,7 @@ class Glow {
     double alpha,
   ) {
     final a = alpha.clamp(0.0, 1.0);
-    if (enabled) {
+    if (enabled && !kIsWeb) {
       _sparkHalo.color = color.withValues(alpha: 0.16 * a);
       canvas.drawCircle(center, radius * 2.4, _sparkHalo);
     }
