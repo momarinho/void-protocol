@@ -206,6 +206,34 @@ class AsteroidsGame extends FlameGame
   // Masterpiece Modes (Sprint 8 - 12) & Phase 2 Roguelite Systems (Sprint 13 - 18)
   bool isHyperMode = false;
   bool hyperModeUnlocked = true;
+
+  bool get isHardDifficulty => isHyperMode || voidCellsLevel > 0;
+
+  double get incomingDamageMultiplier => calculateIncomingDamageMultiplier(
+        isHyperMode: isHyperMode,
+        voidCells: voidCellsLevel,
+      );
+
+  double get effectiveSpawnPaceMultiplier => calculateSpawnPaceMultiplier(
+        isHyperMode: isHyperMode,
+        voidCells: voidCellsLevel,
+      );
+
+  static double calculateIncomingDamageMultiplier({
+    required bool isHyperMode,
+    required int voidCells,
+  }) {
+    final safeCells = math.max(0, voidCells);
+    return 1.0 + (isHyperMode ? 0.35 : 0.0) + (safeCells * 0.15);
+  }
+
+  static double calculateSpawnPaceMultiplier({
+    required bool isHyperMode,
+    required int voidCells,
+  }) {
+    final safeCells = math.max(0, voidCells);
+    return 1.0 + (isHyperMode ? 0.28 : 0.0) + (safeCells * 0.10);
+  }
   bool isBossRushMode = false;
   int bossRushStage = 0;
   bool campaignCompleted = false;
@@ -858,7 +886,10 @@ class AsteroidsGame extends FlameGame
   List<RoguePerk> currentLevelUpChoices = [];
 
   static int calculateNextLevelXp(int level) {
-    return 24 + (level - 1) * 28 + (level * level * 6);
+    final base = 24 + (level - 1) * 28 + (level * level * 6);
+    if (level <= 3) return base;
+    final extra = level - 3;
+    return base + (extra * 14) + (extra * extra * 4);
   }
 
   void addXp(int amount) {
@@ -2517,7 +2548,7 @@ class AsteroidsGame extends FlameGame
     // Recompensas do Salto de Hiperespaço
     addScore(10000);
     addScrap(1000);
-    addXp(350);
+    addXp(140);
     affinityManager.getAffinity(selectedValkyrie.id).addXp(200);
 
     // Efeitos visuais e sonoros de dobra espacial

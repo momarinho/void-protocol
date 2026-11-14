@@ -330,41 +330,31 @@ class PlayerComponent extends PositionComponent
         return;
       }
 
+      double mult = 1.0;
+      try {
+        mult = game.incomingDamageMultiplier;
+      } catch (_) {}
       final double dmg;
       if (other.radius >= 40.0) {
-        dmg = 35.0; // Large asteroid collision
+        dmg = 20.0; // Large asteroid collision
       } else if (other.radius >= 25.0) {
-        dmg = 24.0; // Medium asteroid collision
+        dmg = 14.0; // Medium asteroid collision
       } else {
-        dmg = 14.0; // Small asteroid collision
+        dmg = 9.0; // Small asteroid collision
       }
-      takeHit(dmg);
+      takeHit(dmg * mult);
     } else if (other is EnemyShipComponent) {
-      final double dmg;
-      switch (other.type) {
-        case EnemyType.scout:
-        case EnemyType.voidSwarmer:
-          dmg = 14.0;
-          break;
-        case EnemyType.raider:
-        case EnemyType.cryoBomber:
-          dmg = 30.0;
-          break;
-        case EnemyType.sniper:
-        case EnemyType.gravityWeaver:
-          dmg = 22.0;
-          break;
-        case EnemyType.aegisBulwark:
-        case EnemyType.carrierHive:
-          dmg = 36.0;
-          break;
-        case EnemyType.eliteCommander:
-          dmg = 45.0;
-          break;
-      }
-      takeHit(dmg);
+      double mult = 1.0;
+      try {
+        mult = game.incomingDamageMultiplier;
+      } catch (_) {}
+      takeHit(EnemyShipComponent.baseContactDamage(other.type) * mult);
     } else if (other is SectorBoss) {
-      takeHit(45.0);
+      double mult = 1.0;
+      try {
+        mult = game.incomingDamageMultiplier;
+      } catch (_) {}
+      takeHit(28.0 * mult);
     } else if (other is BreakablePropComponent) {
       if (isDashing) {
         other.takeDamage(45.0, other.position);

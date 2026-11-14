@@ -161,7 +161,7 @@ void main() {
       expect(game.totalCredits, equals(initialCredits + 100));
     });
 
-    test('CryoPodComponent salvaging awards +500 XP and +250 Scrap', () {
+    test('CryoPodComponent salvaging awards +140 XP and +250 Scrap', () {
       final game = AsteroidsGame();
       game.state = GameState.playing;
       game.player = PlayerComponent(position: Vector2.zero());

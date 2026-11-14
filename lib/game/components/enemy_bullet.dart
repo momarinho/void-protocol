@@ -63,7 +63,13 @@ class EnemyBulletComponent extends PositionComponent
   void onCollisionStart(Set<Vector2> intersectionPoints, PositionComponent other) {
     super.onCollisionStart(intersectionPoints, other);
     if (other is PlayerComponent) {
-      other.takeHit(damage);
+      double mult = 1.0;
+      try {
+        mult = other.game.incomingDamageMultiplier;
+      } catch (_) {}
+      // Normalize legacy 1-damage enemy/boss projectiles to fair 10 HP base damage
+      final baseDmg = damage <= 2.0 ? 10.0 : damage;
+      other.takeHit(baseDmg * mult);
       removeFromParent();
     } else if (other is MegastructureWallComponent) {
       removeFromParent();

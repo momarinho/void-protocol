@@ -612,10 +612,10 @@ class AsteroidComponent extends PositionComponent
         color: const Color(0xFFFFD700),
         fontSize: 16.0,
       );
-      // Spawns 5 large XP orbs
-      for (var i = 0; i < 5; i++) {
-        final a = (i * 2 * math.pi / 5);
-        final offset = Vector2(math.cos(a), math.sin(a)) * (radius * 0.5);
+      // Spawns 2 large XP orbs (balanced burst without instant multi-level cascades)
+      for (var i = 0; i < 2; i++) {
+        final a = (i * math.pi);
+        final offset = Vector2(math.cos(a), math.sin(a)) * (radius * 0.45);
         game.world.add(
           XpOrbComponent(position: position + offset, type: XpOrbType.large),
         );
@@ -643,8 +643,8 @@ class AsteroidComponent extends PositionComponent
         maxSpeed: 220.0,
       );
 
-      // Stardust Rain: spawns 7 to 9 XP orbs!
-      const int xpCount = 8;
+      // Stardust Rain: spawns 7 XP orbs (1 medium + 6 small = steady boost without level-up spike)
+      const int xpCount = 7;
       for (var i = 0; i < xpCount; i++) {
         final angle = (2 * math.pi * i) / xpCount;
         final offset =
@@ -653,7 +653,7 @@ class AsteroidComponent extends PositionComponent
         game.world.add(
           XpOrbComponent(
             position: position + offset,
-            type: (i % 3 == 0) ? XpOrbType.medium : XpOrbType.small,
+            type: (i == 0) ? XpOrbType.medium : XpOrbType.small,
           ),
         );
       }
@@ -761,11 +761,9 @@ class AsteroidComponent extends PositionComponent
       game.triggerScreenShake(duration: 0.15, intensity: radius * 0.15);
     }
 
-    // Standard XP drop
+    // Standard XP drop (smooth progression across rock splits)
     final XpOrbType orbType;
     if (radius > GameConstants.asteroidMinRadius * 2.2) {
-      orbType = XpOrbType.large;
-    } else if (radius > GameConstants.asteroidMinRadius * 1.2) {
       orbType = XpOrbType.medium;
     } else {
       orbType = XpOrbType.small;
@@ -786,11 +784,15 @@ class AsteroidComponent extends PositionComponent
     if (activeDrops < 3 && random.nextDouble() < dropChance) {
       final roll = random.nextDouble();
       final hpRatio = game.player.hpPercent;
+      final isHard = game.isHardDifficulty;
 
       DropType dropType;
-      // Vampire Survivors style: Asteroides comuns nunca dropam vida.
-      // Apenas titãs gigantes (> 55px) com jogador em perigo crítico (< 25% HP) têm 6% de chance de nanites de reparo.
-      if (radius >= 55.0 && hpRatio < 0.25 && random.nextDouble() < 0.06) {
+      // Normal mode offers fair occasional repair nanites on medium/large rocks when damaged;
+      // Hard mode keeps rare emergency drops (< 25% HP on huge boulders).
+      final canDropHealth = isHard
+          ? (radius >= 55.0 && hpRatio < 0.25 && random.nextDouble() < 0.06)
+          : (radius >= 45.0 && hpRatio < 0.50 && random.nextDouble() < 0.08);
+      if (canDropHealth) {
         dropType = DropType.health;
       } else if (roll < 0.38) {
         dropType = DropType.lunarSample;
