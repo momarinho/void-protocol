@@ -60,29 +60,31 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
     difficultyTimer += dt;
 
     // Timeline Script do Roguelite (Hordas e Incursões Escaladas):
+    final isHard = game.isHardDifficulty;
     if (difficultyTimer >= 20.0 && !swarm20Spawned) {
       swarm20Spawned = true;
       _spawnSwarmRush(
-        count: 4,
+        count: isHard ? 5 : 3,
         label: '⚠️ PATRULHA DE RECONHECIMENTO DETECTADA! ⚠️',
       );
     }
     // Sprint 46: Crise de Setor 1 - Tempestade de Meteoritos Magmáticos
     if (difficultyTimer >= 35.0 && !magmaSurgeSpawned) {
       magmaSurgeSpawned = true;
-      _spawnMagmaMeteoriteSurge();
+      _spawnMagmaMeteoriteSurge(count: isHard ? 4 : 2);
     }
     if (difficultyTimer >= 45.0 && !subBoss45Spawned) {
       subBoss45Spawned = true;
       _spawnEliteCommander(
         1,
+        hpMultiplier: isHard ? 1.0 : 0.55,
         label: '⚠️ SUB-CHEFE [0:45]: VANGUARDA DO VÁCUO!',
       );
     }
     if (difficultyTimer >= 60.0 && !swarm60Spawned) {
       swarm60Spawned = true;
       _spawnSwarmRush(
-        count: 10,
+        count: isHard ? 12 : 7,
         label: '⚠️ CERCO DE DRONES EM ALTA VELOCIDADE! ⚠️',
       );
     }
@@ -93,8 +95,10 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
     if (difficultyTimer >= 90.0 && !elite1Spawned) {
       elite1Spawned = true;
       _spawnEliteCommander(
-        2,
-        label: '⚠️ SUB-CHEFES [1:30]: EXECUTORES GÊMEOS!',
+        isHard ? 2 : 1,
+        label: isHard
+            ? '⚠️ SUB-CHEFES [1:30]: EXECUTORES GÊMEOS!'
+            : '⚠️ SUB-CHEFE [1:30]: EXECUTOR DO VÁCUO!',
       );
     }
     // Sprint 46: Crise de Setor 2 - Cargueiro Contrabandista de Alta Prioridade
@@ -105,8 +109,10 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
     if (difficultyTimer >= 135.0 && !elite2Spawned) {
       elite2Spawned = true;
       _spawnEliteCommander(
-        2,
-        label: '⚠️ SUB-CHEFES [2:15]: GUARDA DE ELITE DO SETOR!',
+        isHard ? 2 : 1,
+        label: isHard
+            ? '⚠️ SUB-CHEFES [2:15]: GUARDA DE ELITE DO SETOR!'
+            : '⚠️ SUB-CHEFE [2:15]: GUARDA DE ELITE DO SETOR!',
       );
     }
     if (difficultyTimer >= 150.0 && !sectorClimaxSpawned) {
@@ -114,25 +120,29 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
       _triggerSectorBossClimax();
     }
 
-    // 2. Intervalo de Asteroides
+    // 2. Intervalo de Asteroides (suavizado no Normal; intenso no Hiper/Void Cells)
+    final paceMult = game.effectiveSpawnPaceMultiplier;
+    final speedBoost = 1.0 + (paceMult - 1.0) * 0.65;
     double asteroidInterval;
     if (difficultyTimer < 50.0) {
       final p = difficultyTimer / 50.0;
-      asteroidInterval = 3.2 - (p * 1.0);
-      speedMultiplier = 0.55 + (p * 0.30);
+      asteroidInterval = 3.8 - (p * 1.1);
+      speedMultiplier = 0.45 + (p * 0.27);
     } else if (difficultyTimer < 105.0) {
       final p = (difficultyTimer - 50.0) / 55.0;
-      asteroidInterval = 2.2 - (p * 0.90);
-      speedMultiplier = 0.85 + (p * 0.40);
+      asteroidInterval = 2.7 - (p * 1.15);
+      speedMultiplier = 0.72 + (p * 0.43);
     } else if (difficultyTimer < 150.0) {
       final p = (difficultyTimer - 105.0) / 45.0;
-      asteroidInterval = 1.30 - (p * 0.60);
-      speedMultiplier = 1.25 + (p * 0.50);
+      asteroidInterval = 1.55 - (p * 0.70);
+      speedMultiplier = 1.15 + (p * 0.45);
     } else {
       final p = ((difficultyTimer - 150.0) / 30.0).clamp(0.0, 1.0);
-      asteroidInterval = 0.70 - (p * 0.44);
-      speedMultiplier = 1.75 + (p * 0.90);
+      asteroidInterval = 0.85 - (p * 0.48);
+      speedMultiplier = 1.60 + (p * 0.70);
     }
+    asteroidInterval /= paceMult;
+    speedMultiplier *= speedBoost;
 
     if (spawnTimer > asteroidInterval) {
       spawnTimer = 0.0;
@@ -146,18 +156,19 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
 
     // 3. Intervalo de Frota Inimiga (Curva Roguelite Progressiva)
     double enemyInterval;
-    if (difficultyTimer < 25.0) {
+    if (difficultyTimer < 28.0) {
       enemyInterval =
-          3.4; // Onboarding suave: 1 nave por vez para coletar XP inicial e escolher upgrade
-    } else if (difficultyTimer < 50.0) {
-      enemyInterval = 2.4; // Pequenas patrulhas para testar o primeiro upgrade
-    } else if (difficultyTimer < 90.0) {
-      enemyInterval = 1.6; // Incursões moderadas (Scouts, Raiders, Enxames)
+          4.2; // Onboarding suave: 1 nave por vez para coletar XP inicial e escolher upgrade
+    } else if (difficultyTimer < 55.0) {
+      enemyInterval = 2.8; // Pequenas patrulhas para testar o primeiro upgrade
+    } else if (difficultyTimer < 95.0) {
+      enemyInterval = 1.85; // Incursões moderadas (Scouts, Raiders, Enxames)
     } else if (difficultyTimer < 140.0) {
-      enemyInterval = 1.15; // Pressão constante
+      enemyInterval = 1.25; // Pressão constante pré-clímax
     } else {
-      enemyInterval = 0.80; // Tempestade cósmica pré-chefe
+      enemyInterval = 0.85; // Tempestade cósmica pré-chefe
     }
+    enemyInterval /= paceMult;
 
     if (enemySpawnTimer > enemyInterval) {
       enemySpawnTimer = 0.0;
@@ -255,7 +266,11 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
     game.world.add(candidate);
   }
 
-  void _spawnEliteCommander(int count, {String? label}) {
+  void _spawnEliteCommander(
+    int count, {
+    String? label,
+    double hpMultiplier = 1.0,
+  }) {
     Vector2 playerPos;
     try {
       playerPos = game.player.position;
@@ -288,12 +303,16 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
       spawnPos.y = spawnPos.y.clamp(80.0, GameConstants.sectorHeight - 80.0);
 
       game.world.add(
-        EnemyShipComponent(position: spawnPos, type: EnemyType.eliteCommander),
+        EnemyShipComponent(
+          position: spawnPos,
+          type: EnemyType.eliteCommander,
+          hpMultiplier: hpMultiplier,
+        ),
       );
     }
   }
 
-  void _spawnMagmaMeteoriteSurge() {
+  void _spawnMagmaMeteoriteSurge({int count = 4}) {
     Vector2 playerPos;
     try {
       playerPos = game.player.position;
@@ -319,7 +338,6 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
     } catch (_) {}
 
     final random = math.Random();
-    const count = 4;
     for (int i = 0; i < count; i++) {
       final angle = (math.pi / 4) + (random.nextDouble() - 0.5) * 0.4;
       final speed = 190.0 + random.nextDouble() * 50.0;
@@ -676,14 +694,18 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
 
     final speed = (35.0 + random.nextDouble() * 45.0) * speedMultiplier;
     final toPlayer = (playerPos - position).normalized();
+    final earlyNormal = difficultyTimer < 40.0 && !game.isHardDifficulty;
+    final spreadDeg = earlyNormal ? 144.0 : 90.0;
     final deviationAngle =
-        (-45.0 + random.nextDouble() * 90.0) * math.pi / 180.0;
+        ((-spreadDeg * 0.5) + random.nextDouble() * spreadDeg) * math.pi / 180.0;
     final velocity = toPlayer.clone()..rotate(deviationAngle);
     velocity.scale(speed);
 
     // Kind/Size
     final int kind;
-    if (difficultyTimer < 50.0) {
+    if (earlyNormal) {
+      kind = random.nextBool() ? 1 : 2;
+    } else if (difficultyTimer < 50.0) {
       kind = random.nextBool() ? 2 : 3;
     } else {
       kind = random.nextInt(GameConstants.asteroidKinds) + 1;
@@ -704,9 +726,9 @@ class AsteroidField extends Component with HasGameReference<AsteroidsGame> {
       final roll = random.nextDouble();
       if (roll < 0.14) {
         variant = AsteroidVariant.titanium;
-      } else if (roll < 0.35) {
+      } else if (roll < 0.26) {
         variant = AsteroidVariant.crystalline;
-      } else if (roll < 0.50 &&
+      } else if (roll < 0.42 &&
           (game.currentSector.id == SectorId.orion ||
               difficultyTimer >= 120.0)) {
         variant = AsteroidVariant.magma;

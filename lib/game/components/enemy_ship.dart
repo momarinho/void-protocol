@@ -45,12 +45,38 @@ class EnemyShipComponent extends PositionComponent
     with HasGameReference<AsteroidsGame>, CollisionCallbacks {
   AsteroidsGame? testGame;
   final EnemyType type;
+  final double hpMultiplier;
   late final double radius;
   late final double baseMaxHp;
   late double maxHp;
   late double hp;
   late double baseSpeed;
   late int scoreValue;
+
+  /// Unifies ship collision base damage across PlayerComponent and EnemyShipComponent.
+  /// Scaled at impact time by [AsteroidsGame.incomingDamageMultiplier].
+  static double baseContactDamage(EnemyType type) {
+    switch (type) {
+      case EnemyType.voidSwarmer:
+        return 7.0;
+      case EnemyType.scout:
+        return 9.0;
+      case EnemyType.sniper:
+        return 13.0;
+      case EnemyType.cryoBomber:
+        return 14.0;
+      case EnemyType.gravityWeaver:
+        return 15.0;
+      case EnemyType.raider:
+        return 16.0;
+      case EnemyType.aegisBulwark:
+        return 22.0;
+      case EnemyType.carrierHive:
+        return 24.0;
+      case EnemyType.eliteCommander:
+        return 26.0;
+    }
+  }
 
   // Sprint 20: Promoção de Elite pelo Horde Director ao atingir o teto de entidades
   bool isPromotedElite = false;
@@ -92,12 +118,19 @@ class EnemyShipComponent extends PositionComponent
   void applyDynamicScaling({
     required double minutesElapsed,
     required int voidCells,
+    bool isHyperMode = false,
   }) {
     maxHp = calculateScaledHp(
       baseHp: baseMaxHp,
       minutesElapsed: minutesElapsed,
       voidCells: voidCells,
     );
+    if (isHyperMode) {
+      maxHp *= 1.20;
+    }
+    if (hpMultiplier != 1.0) {
+      maxHp *= hpMultiplier;
+    }
     if (isPromotedElite) {
       maxHp *= 1.65;
     }
@@ -227,7 +260,11 @@ class EnemyShipComponent extends PositionComponent
     }
   }
 
-  EnemyShipComponent({required Vector2 position, required this.type}) {
+  EnemyShipComponent({
+    required Vector2 position,
+    required this.type,
+    this.hpMultiplier = 1.0,
+  }) {
     this.position = position;
     anchor = Anchor.center;
 
@@ -295,6 +332,9 @@ class EnemyShipComponent extends PositionComponent
     }
 
     baseMaxHp = maxHp;
+    if (hpMultiplier != 1.0) {
+      maxHp *= hpMultiplier;
+    }
     hp = maxHp;
     size = Vector2.all(radius * 2);
   }
@@ -312,11 +352,20 @@ class EnemyShipComponent extends PositionComponent
             60.0,
         (game.asteroidField?.difficultyTimer ?? 0.0) / 60.0,
       );
-      if (elapsedMin > 0.01 || game.voidCellsLevel > 0) {
+      if (elapsedMin > 0.01 ||
+          game.voidCellsLevel > 0 ||
+          game.isHyperMode ||
+          hpMultiplier != 1.0) {
         applyDynamicScaling(
           minutesElapsed: elapsedMin,
           voidCells: game.voidCellsLevel,
+          isHyperMode: game.isHyperMode,
         );
+      }
+      if (game.isHyperMode || game.voidCellsLevel > 0) {
+        final speedBoost =
+            1.0 + (game.isHyperMode ? 0.12 : 0.0) + (game.voidCellsLevel * 0.04);
+        baseSpeed *= speedBoost;
       }
     } catch (_) {}
   }
@@ -1172,37 +1221,11 @@ class EnemyShipComponent extends PositionComponent
   ) {
     super.onCollisionStart(intersectionPoints, other);
     if (other is PlayerComponent) {
-      final double dmg;
-      switch (type) {
-        case EnemyType.scout:
-          dmg = 16.0;
-          break;
-        case EnemyType.raider:
-          dmg = 32.0;
-          break;
-        case EnemyType.sniper:
-          dmg = 22.0;
-          break;
-        case EnemyType.eliteCommander:
-          dmg = 45.0;
-          break;
-        case EnemyType.voidSwarmer:
-          dmg = 10.0;
-          break;
-        case EnemyType.aegisBulwark:
-          dmg = 34.0;
-          break;
-        case EnemyType.carrierHive:
-          dmg = 38.0;
-          break;
-        case EnemyType.gravityWeaver:
-          dmg = 24.0;
-          break;
-        case EnemyType.cryoBomber:
-          dmg = 22.0;
-          break;
-      }
-      other.takeHit(dmg);
+      double mult = 1.0;
+      try {
+        mult = game.incomingDamageMultiplier;
+      } catch (_) {}
+      other.takeHit(baseContactDamage(type) * mult);
       // Small bounce/recoil away from player
       final push = (position - other.position).normalized();
       velocity = push * (baseSpeed * 1.5);

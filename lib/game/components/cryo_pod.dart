@@ -47,14 +47,14 @@ class CryoPodComponent extends PositionComponent with HasGameReference<Asteroids
     isSalvaged = true;
 
     // 1. Rewards
-    game.addXp(500);
+    game.addXp(140);
     game.addScrap(250);
     game.playSfx('powerup.wav');
 
     // 2. Floating announcement
     game.spawnFloatingText(
       position + Vector2(0, -40),
-      '🌟 ANCIENT CRYO-POD RECOVERED! +500 XP // +250 SCRAP',
+      '🌟 ANCIENT CRYO-POD RECOVERED! +140 XP // +250 SCRAP',
       color: const Color(0xFF00E5FF),
       fontSize: 20.0,
     );

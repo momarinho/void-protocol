@@ -1,7 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flame/components.dart';
 import 'package:void_protocol/game/components/asteroid.dart';
+import 'package:void_protocol/game/components/cryo_pod.dart';
+import 'package:void_protocol/game/components/enemy_ship.dart';
 import 'package:void_protocol/game/components/player.dart';
+import 'package:void_protocol/game/components/xp_orb.dart';
 import 'package:void_protocol/game/weapons.dart';
 import 'package:void_protocol/game/asteroids_game.dart';
 
@@ -133,5 +136,64 @@ void main() {
         );
       },
     );
+  });
+
+  group('Progression & Difficulty Separation Tests', () {
+    test('Normal mode vs Hyper / Void Cells difficulty multipliers scale cleanly', () {
+      final game = AsteroidsGame();
+      game.isHyperMode = false;
+      game.voidCellsLevel = 0;
+
+      expect(game.isHardDifficulty, isFalse);
+      expect(game.incomingDamageMultiplier, equals(1.0));
+      expect(game.effectiveSpawnPaceMultiplier, equals(1.0));
+
+      game.isHyperMode = true;
+      expect(game.isHardDifficulty, isTrue);
+      expect(game.incomingDamageMultiplier, greaterThan(1.2));
+      expect(game.effectiveSpawnPaceMultiplier, greaterThan(1.2));
+
+      game.voidCellsLevel = 3;
+      expect(game.incomingDamageMultiplier, greaterThan(1.7));
+      expect(game.effectiveSpawnPaceMultiplier, greaterThan(1.5));
+
+      expect(EnemyShipComponent.baseContactDamage(EnemyType.scout), lessThanOrEqualTo(12.0));
+      expect(EnemyShipComponent.baseContactDamage(EnemyType.eliteCommander), lessThanOrEqualTo(30.0));
+
+      final vanguardElite = EnemyShipComponent(
+        position: Vector2.zero(),
+        type: EnemyType.eliteCommander,
+        hpMultiplier: 0.55,
+      );
+      expect(vanguardElite.maxHp, closeTo(650.0 * 0.55, 0.01));
+    });
+
+    test('XP curve & rewards stay smooth without runaway multi-level spikes', () {
+      expect(AsteroidsGame.calculateNextLevelXp(1), equals(30));
+      expect(AsteroidsGame.calculateNextLevelXp(2), equals(76));
+      expect(AsteroidsGame.calculateNextLevelXp(3), equals(134));
+      expect(AsteroidsGame.calculateNextLevelXp(4), equals(222));
+      expect(AsteroidsGame.calculateNextLevelXp(5), equals(330));
+
+      final game = AsteroidsGame();
+      game.player = PlayerComponent(position: Vector2.zero())..customGame = game;
+      game.state = GameState.playing;
+
+      // Golden asteroid yields 2 large XP orbs (28 XP), not a massive 70 XP spike
+      final golden = AsteroidComponent(
+        radius: 35.0,
+        position: Vector2(200, 200),
+        velocity: Vector2.zero(),
+        variant: AsteroidVariant.golden,
+      )..game = game;
+      golden.split();
+      final goldenOrbs = game.world.children.whereType<XpOrbComponent>().toList();
+      expect(goldenOrbs.length, equals(2));
+
+      // CryoPod awards balanced +140 XP instead of 500 XP cascade
+      final pod = CryoPodComponent(position: Vector2(10, 10))..game = game;
+      pod.salvage();
+      expect(game.runLevel, lessThanOrEqualTo(3));
+    });
   });
 }
