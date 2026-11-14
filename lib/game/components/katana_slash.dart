@@ -30,6 +30,14 @@ class KatanaSlashComponent extends PositionComponent
   final Weapon? weaponSource;
   final Set<PositionComponent> _damagedTargets = {};
 
+  static final Paint _glowPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..blendMode = BlendMode.plus;
+  static final Paint _bladePaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _edgePaint = Paint()..style = PaintingStyle.stroke;
+  static final Path _slashPath = Path();
+  static final Path _edgePath = Path();
+
   KatanaSlashComponent({
     required Vector2 position,
     required double angle,
@@ -205,35 +213,31 @@ class KatanaSlashComponent extends PositionComponent
     canvas.translate(halfW, halfH);
 
     // Geometria em arco crescente que curva na direção do movimento (local -Y)
-    final path = Path();
-    path.moveTo(-halfW, 0);
-    path.quadraticBezierTo(0, -halfH, halfW, 0);
-    path.quadraticBezierTo(0, -halfH * 0.25, -halfW, 0);
-    path.close();
+    _slashPath.reset();
+    _slashPath.moveTo(-halfW, 0);
+    _slashPath.quadraticBezierTo(0, -halfH, halfW, 0);
+    _slashPath.quadraticBezierTo(0, -halfH * 0.25, -halfW, 0);
+    _slashPath.close();
 
-    // 1. Brilho halo exterior
-    final glowPaint = Paint()
-      ..color = slashColor.withOpacity(0.4)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0)
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(path, glowPaint);
+    // 1. Brilho halo exterior (BlendMode.plus sem MaskFilter.blur para WebGL/Mobile 60 FPS)
+    _glowPaint.color = slashColor.withValues(alpha: 0.24);
+    canvas.save();
+    canvas.scale(1.12, 1.15);
+    canvas.drawPath(_slashPath, _glowPaint);
+    canvas.restore();
 
     // 2. Corpo cortante de plasma
-    final bladePaint = Paint()
-      ..color = slashColor
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(path, bladePaint);
+    _bladePaint.color = slashColor;
+    canvas.drawPath(_slashPath, _bladePaint);
 
     // 3. Fio da lâmina taquiônica (núcleo branco afiadíssimo)
-    final edgePath = Path();
-    edgePath.moveTo(-halfW * 0.85, 0);
-    edgePath.quadraticBezierTo(0, -halfH * 0.85, halfW * 0.85, 0);
+    _edgePath.reset();
+    _edgePath.moveTo(-halfW * 0.85, 0);
+    _edgePath.quadraticBezierTo(0, -halfH * 0.85, halfW * 0.85, 0);
 
-    final edgePaint = Paint()
-      ..color = coreColor
-      ..strokeWidth = isVoidMuramasa ? 2.5 : 1.8
-      ..style = PaintingStyle.stroke;
-    canvas.drawPath(edgePath, edgePaint);
+    _edgePaint.color = coreColor;
+    _edgePaint.strokeWidth = isVoidMuramasa ? 2.5 : 1.8;
+    canvas.drawPath(_edgePath, _edgePaint);
 
     canvas.restore();
   }

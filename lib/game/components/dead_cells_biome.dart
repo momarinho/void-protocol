@@ -16,6 +16,17 @@ class MegastructureWallComponent extends PositionComponent
   final Vector2 wallSize;
   final Color wallColor;
 
+  static final Paint _shadowPaint = Paint()
+    ..color = Colors.black.withValues(alpha: 0.45)
+    ..style = PaintingStyle.fill;
+  static final Paint _mainRectPaint = Paint()
+    ..color = const Color(0xFF090D1A)
+    ..style = PaintingStyle.fill;
+  static final Paint _seamPaint = Paint()
+    ..color = const Color(0xFF1E293B)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.6;
+
   MegastructureWallComponent({
     required Vector2 position,
     required this.wallSize,
@@ -159,37 +170,24 @@ class MegastructureWallComponent extends PositionComponent
 
   @override
   void render(Canvas canvas) {
-    // 1. Sombra projetada para profundidade cósmica (Drop Shadow)
+    // 1. Sombra projetada para profundidade cósmica (Zero-GC, sem MaskFilter.blur)
     final shadowRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(4, 5, size.x, size.y),
       const Radius.circular(5),
     );
-    canvas.drawRRect(
-      shadowRect,
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.60)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0),
-    );
+    canvas.drawRRect(shadowRect, _shadowPaint);
 
     // 2. Chapa de liga aeroespacial escura (Hard-surface titanium alloy)
     final mainRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(0, 0, size.x, size.y),
       const Radius.circular(5),
     );
-    canvas.drawRRect(
-      mainRect,
-      Paint()
-        ..color = const Color(0xFF090D1A)
-        ..style = PaintingStyle.fill,
-    );
+    canvas.drawRRect(mainRect, _mainRectPaint);
 
     final isHorizontal = size.x >= size.y;
 
     // 3. Segmentos de blindagem chanfrados procedurais com micro-costuras laser
-    final seamPaint = Paint()
-      ..color = const Color(0xFF1E293B)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6;
+    final seamPaint = _seamPaint;
 
     if (isHorizontal) {
       for (double x = 44.0; x < size.x - 20.0; x += 44.0) {

@@ -4,8 +4,6 @@ import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 
-import 'dart:io' as io;
-
 class ApiService {
   static const String _envBaseUrl = String.fromEnvironment('API_BASE_URL');
   static const String _envSecretKey = String.fromEnvironment(
@@ -27,7 +25,7 @@ class ApiService {
           ? configured.substring(0, configured.length - 1)
           : configured;
     }
-    if (!kIsWeb && io.Platform.isAndroid) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return 'http://10.0.2.2:8080';
     }
     return 'http://localhost:8080';

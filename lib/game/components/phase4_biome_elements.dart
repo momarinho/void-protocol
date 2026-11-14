@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flame/collisions.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:void_protocol/constants.dart';
 import 'package:void_protocol/game/asteroids_game.dart';
@@ -20,12 +21,135 @@ class BiomeBackdropComponent extends PositionComponent
   double _animTimer = 0.0;
   final List<Vector2> _ambientMotes = [];
 
+  static final Rect _unitRect = const Rect.fromLTWH(0, 0, 1, 1);
+  static final Rect _unitCircle = Rect.fromCircle(
+    center: Offset.zero,
+    radius: 1.0,
+  );
+
+  static final Paint _motePaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _haloPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _deepVoidPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _cloudPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..blendMode = BlendMode.plus;
+  static final Paint _vignettePaint = Paint()
+    ..shader = RadialGradient(
+      colors: [
+        Colors.transparent,
+        Colors.black.withValues(alpha: 0.30),
+        Colors.black.withValues(alpha: 0.82),
+      ],
+      stops: const [0.55, 0.80, 1.0],
+    ).createShader(_unitRect);
+  static final Paint _sectorCorePaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _shapeFillPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _shapeStrokePaint = Paint()..style = PaintingStyle.stroke;
+
+  SectorId? _cachedShaderSector;
+  late Shader _deepVoidShader;
+  late Shader _cloudShader1;
+  late Shader _cloudShader2;
+  late Shader _sectorFocalShader;
+
   BiomeBackdropComponent({required this.sectorId})
       : super(
           position: Vector2.zero(),
           size: Vector2(GameConstants.sectorWidth, GameConstants.sectorHeight),
           priority: -45,
         );
+
+  @override
+  void onMount() {
+    super.onMount();
+    try {
+      game.activeBiomeBackdropCount++;
+    } catch (_) {}
+  }
+
+  @override
+  void onRemove() {
+    try {
+      game.activeBiomeBackdropCount = math.max(
+        0,
+        game.activeBiomeBackdropCount - 1,
+      );
+    } catch (_) {}
+    super.onRemove();
+  }
+
+  void _ensureShaders() {
+    if (_cachedShaderSector == sectorId) return;
+    _cachedShaderSector = sectorId;
+    final sector = Sector.findById(sectorId);
+
+    _deepVoidShader = RadialGradient(
+      center: Alignment.center,
+      radius: 1.1,
+      colors: [
+        sector.primaryColor.withValues(alpha: 0.08),
+        sector.secondaryColor.withValues(alpha: 0.03),
+        const Color(0xFF02040A),
+      ],
+      stops: const [0.0, 0.55, 1.0],
+    ).createShader(_unitRect);
+
+    _cloudShader1 = RadialGradient(
+      colors: [
+        sector.primaryColor.withValues(alpha: 0.06),
+        Colors.transparent,
+      ],
+    ).createShader(_unitCircle);
+
+    _cloudShader2 = RadialGradient(
+      colors: [
+        sector.secondaryColor.withValues(alpha: 0.04),
+        Colors.transparent,
+      ],
+    ).createShader(_unitCircle);
+
+    switch (sectorId) {
+      case SectorId.vesta:
+        _sectorFocalShader = RadialGradient(
+          colors: [
+            const Color(0xFFFF6D00).withValues(alpha: 0.22),
+            const Color(0xFF3E2723).withValues(alpha: 0.18),
+            Colors.transparent,
+          ],
+        ).createShader(_unitCircle);
+        break;
+      case SectorId.orion:
+        _sectorFocalShader = RadialGradient(
+          colors: [
+            const Color(0xFFFFF59D).withValues(alpha: 0.28),
+            const Color(0xFFFF6D00).withValues(alpha: 0.16),
+            Colors.transparent,
+          ],
+        ).createShader(_unitCircle);
+        break;
+      case SectorId.xenoHive:
+        _sectorFocalShader = RadialGradient(
+          colors: [
+            const Color(0xFFE040FB).withValues(alpha: 0.24),
+            const Color(0xFF880E4F).withValues(alpha: 0.14),
+            Colors.transparent,
+          ],
+        ).createShader(_unitCircle);
+        break;
+      case SectorId.cryoAbyss:
+      case SectorId.graveyard:
+      case SectorId.eventHorizon:
+      case SectorId.voidThrone:
+        _sectorFocalShader = RadialGradient(
+          colors: [
+            const Color(0xFFAA00FF).withValues(alpha: 0.30),
+            const Color(0xFFFFD700).withValues(alpha: 0.14),
+            Colors.transparent,
+          ],
+        ).createShader(_unitCircle);
+        break;
+    }
+  }
 
   @override
   Future<void> onLoad() async {
@@ -83,24 +207,25 @@ class BiomeBackdropComponent extends PositionComponent
   void _renderAmbientMotes(Canvas canvas, double width, double height) {
     final sector = Sector.findById(sectorId);
     final moteColor = sector.primaryColor;
-    final motePaint = Paint()..style = PaintingStyle.fill;
-    final haloPaint = Paint()..style = PaintingStyle.fill;
+    final step = kIsWeb ? 2 : 1;
 
-    for (int i = 0; i < _ambientMotes.length; i++) {
+    for (int i = 0; i < _ambientMotes.length; i += step) {
       final pos = _ambientMotes[i].toOffset();
       final pulse = 0.5 + 0.5 * math.sin(_animTimer * 2.4 + i);
       final r = (1.2 + (i % 2)) * (0.7 + 0.3 * pulse);
 
-      motePaint.color = moteColor.withValues(alpha: 0.16 + 0.10 * pulse);
-      haloPaint.color = moteColor.withValues(alpha: 0.05 * pulse);
-
-      canvas.drawCircle(pos, r * 2.0, haloPaint);
-      canvas.drawCircle(pos, r, motePaint);
+      if (!kIsWeb) {
+        _haloPaint.color = moteColor.withValues(alpha: 0.05 * pulse);
+        canvas.drawCircle(pos, r * 2.0, _haloPaint);
+      }
+      _motePaint.color = moteColor.withValues(alpha: 0.16 + 0.10 * pulse);
+      canvas.drawCircle(pos, r, _motePaint);
     }
   }
 
   @override
   void render(Canvas canvas) {
+    _ensureShaders();
     final width = GameConstants.screenWidth;
     final height = GameConstants.screenHeight;
     final viewW = game.visibleWorldWidth;
@@ -113,85 +238,59 @@ class BiomeBackdropComponent extends PositionComponent
       camPos = Vector2(GameConstants.sectorWidth / 2, GameConstants.sectorHeight / 2);
     }
 
-    // 1. Renderiza o Fundo Espacial Procedural Profundo com Parallax e Cores Vivas do Bioma
+    // 1. Renderiza o Fundo Espacial Procedural Profundo com Parallax (Zero-GC Shaders em cache)
     canvas.save();
     canvas.translate(camPos.x - viewW / 2, camPos.y - viewH / 2);
     canvas.scale(viewW / width, viewH / height);
 
-    final sector = Sector.findById(sectorId);
     final normX = (camPos.x / GameConstants.sectorWidth).clamp(0.0, 1.0);
     final normY = (camPos.y / GameConstants.sectorHeight).clamp(0.0, 1.0);
 
-    // Gradiente Abissal de Profundidade Cósmica do Bioma
-    final deepVoidShader = RadialGradient(
-      center: Alignment(
-        -0.4 + normX * 0.8,
-        -0.4 + normY * 0.8,
-      ),
-      radius: 1.1,
-      colors: [
-        sector.primaryColor.withValues(alpha: 0.08),
-        sector.secondaryColor.withValues(alpha: 0.03),
-        const Color(0xFF02040A),
-      ],
-      stops: const [0.0, 0.55, 1.0],
-    ).createShader(Rect.fromLTWH(0, 0, width, height));
-    canvas.drawRect(Rect.fromLTWH(0, 0, width, height), Paint()..shader = deepVoidShader);
+    // Gradiente Abissal de Profundidade Cósmica do Bioma (shader unitário escalado)
+    _deepVoidPaint.shader = _deepVoidShader;
+    canvas.save();
+    canvas.scale(width, height);
+    canvas.drawRect(_unitRect, _deepVoidPaint);
+    canvas.restore();
 
     // Nuvens de Poeira Cósmica Volumétrica com Parallax Suave (BlendMode.plus)
     final cloudOffset1 = Offset(
       width * 0.35 - (normX - 0.5) * 80.0,
       height * 0.40 - (normY - 0.5) * 60.0,
     );
-    canvas.drawCircle(
-      cloudOffset1,
-      width * 0.45,
-      Paint()
-        ..blendMode = BlendMode.plus
-        ..shader = RadialGradient(
-          colors: [
-            sector.primaryColor.withValues(alpha: 0.06),
-            Colors.transparent,
-          ],
-        ).createShader(Rect.fromCircle(center: cloudOffset1, radius: width * 0.45)),
-    );
+    _cloudPaint.shader = _cloudShader1;
+    canvas.save();
+    canvas.translate(cloudOffset1.dx, cloudOffset1.dy);
+    canvas.scale(width * 0.45, width * 0.45);
+    canvas.drawCircle(Offset.zero, 1.0, _cloudPaint);
+    canvas.restore();
 
-    final cloudOffset2 = Offset(
-      width * 0.75 - (normX - 0.5) * 120.0,
-      height * 0.70 - (normY - 0.5) * 90.0,
-    );
-    canvas.drawCircle(
-      cloudOffset2,
-      width * 0.50,
-      Paint()
-        ..blendMode = BlendMode.plus
-        ..shader = RadialGradient(
-          colors: [
-            sector.secondaryColor.withValues(alpha: 0.04),
-            Colors.transparent,
-          ],
-        ).createShader(Rect.fromCircle(center: cloudOffset2, radius: width * 0.50)),
-    );
+    if (!kIsWeb) {
+      final cloudOffset2 = Offset(
+        width * 0.75 - (normX - 0.5) * 120.0,
+        height * 0.70 - (normY - 0.5) * 90.0,
+      );
+      _cloudPaint.shader = _cloudShader2;
+      canvas.save();
+      canvas.translate(cloudOffset2.dx, cloudOffset2.dy);
+      canvas.scale(width * 0.50, width * 0.50);
+      canvas.drawCircle(Offset.zero, 1.0, _cloudPaint);
+      canvas.restore();
+    }
 
-    // Vinheta atmosférica cinematográfica
-    final vignettePaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Colors.transparent,
-          Colors.black.withValues(alpha: 0.30),
-          Colors.black.withValues(alpha: 0.82),
-        ],
-        stops: const [0.55, 0.80, 1.0],
-      ).createShader(Rect.fromLTWH(0, 0, width, height));
-    canvas.drawRect(Rect.fromLTWH(0, 0, width, height), vignettePaint);
+    // Vinheta atmosférica cinematográfica (shader unitário escalado)
+    canvas.save();
+    canvas.scale(width, height);
+    canvas.drawRect(_unitRect, _vignettePaint);
+    canvas.restore();
 
-    // Partículas atmosféricas temáticas flutuantes sutis (micro-fagulhas, geada, esporos)
+    // Partículas atmosféricas temáticas flutuantes sutis
     _renderAmbientMotes(canvas, width, height);
 
     canvas.restore();
 
     // 2. Renderiza as Macro-Estruturas e Sub-Pisos Arquiteturais nos slots globais do mapa
-    final center = const Offset(
+    const center = Offset(
       GameConstants.sectorWidth / 2,
       GameConstants.sectorHeight / 2,
     );
@@ -219,185 +318,127 @@ class BiomeBackdropComponent extends PositionComponent
     }
   }
 
+  void _drawFocalGradientCircle(Canvas canvas, Offset center, double radius) {
+    _sectorCorePaint.shader = _sectorFocalShader;
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.scale(radius, radius);
+    canvas.drawCircle(Offset.zero, 1.0, _sectorCorePaint);
+    canvas.restore();
+  }
+
   void _renderVestaBackdrop(Canvas canvas, Offset center) {
     // 1. Planeta Vulcânico Rachado no quadrante Noroeste (Camada 0)
-    const planetCenter = Offset(950, 950);
-    canvas.drawCircle(
-      planetCenter,
-      620,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [
-            const Color(0xFFFF6D00).withValues(alpha: 0.22),
-            const Color(0xFF3E2723).withValues(alpha: 0.18),
-            Colors.transparent,
-          ],
-        ).createShader(Rect.fromCircle(center: planetCenter, radius: 620)),
-    );
+    _drawFocalGradientCircle(canvas, const Offset(950, 950), 620);
 
     // 2. Halo de Nebulosa e Campo de Poeira Cósmica de Cinturão de Mineração
-    final dustPaint1 = Paint()
-      ..color = const Color(0xFF00E5FF).withValues(alpha: 0.05)
-      ..style = PaintingStyle.fill;
-    final dustPaint2 = Paint()
-      ..color = const Color(0xFFFF9100).withValues(alpha: 0.04)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(3400, 1600), 750, dustPaint1);
-    canvas.drawCircle(const Offset(1600, 3400), 750, dustPaint2);
+    _shapeFillPaint.color = const Color(0xFF00E5FF).withValues(alpha: 0.05);
+    canvas.drawCircle(const Offset(3400, 1600), 750, _shapeFillPaint);
+    _shapeFillPaint.color = const Color(0xFFFF9100).withValues(alpha: 0.04);
+    canvas.drawCircle(const Offset(1600, 3400), 750, _shapeFillPaint);
   }
 
   void _renderHeliosForgeBackdrop(Canvas canvas, Offset center) {
     // 1. Colossal Estrela de Dyson no centro ao fundo (Camada 0)
     final pulse = 1.0 + math.sin(_animTimer * 1.8) * 0.04;
-    canvas.drawCircle(
-      center,
-      780 * pulse,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [
-            const Color(0xFFFFF59D).withValues(alpha: 0.28),
-            const Color(0xFFFF6D00).withValues(alpha: 0.16),
-            Colors.transparent,
-          ],
-        ).createShader(Rect.fromCircle(center: center, radius: 780 * pulse)),
-    );
+    _drawFocalGradientCircle(canvas, center, 780 * pulse);
 
-    // 2. 5 Pontes de Energia Solar Translúcidas ligando Asa Oeste (x=1550) e Asa Leste (x=3250)
-    final bridgePaint = Paint()
-      ..color = const Color(0xFFFF9100).withValues(alpha: 0.20)
-      ..style = PaintingStyle.fill;
-    final bridgeBorder = Paint()
+    // 2. 5 Pontes de Energia Solar Translúcidas ligando Asa Oeste e Asa Leste
+    _shapeFillPaint.color = const Color(0xFFFF9100).withValues(alpha: 0.20);
+    _shapeStrokePaint
       ..color = const Color(0xFFFFD700).withValues(alpha: 0.45)
-      ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
 
     for (final y in [1500.0, 1950.0, 2400.0, 2850.0, 3300.0]) {
       final rect = Rect.fromCenter(center: Offset(center.dx, y), width: 1400, height: 68);
-      canvas.drawRect(rect, bridgePaint);
-      canvas.drawRect(rect, bridgeBorder);
+      canvas.drawRect(rect, _shapeFillPaint);
+      canvas.drawRect(rect, _shapeStrokePaint);
     }
   }
 
   void _renderCryoAbyssBackdrop(Canvas canvas, Offset center) {
     // Piso glacial translúcido e anéis dos 4 Obeliscos Rúnicos de Caelum
-    final iceFloorPaint = Paint()
+    _shapeStrokePaint
       ..color = const Color(0xFF80D8FF).withValues(alpha: 0.10)
-      ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0;
     canvas.drawRect(
       Rect.fromCenter(center: center, width: 3200, height: 2600),
-      iceFloorPaint,
+      _shapeStrokePaint,
     );
 
-    final obeliskOffsets = [
-      const Offset(1350, 1350),
-      const Offset(3450, 1350),
-      const Offset(1350, 3450),
-      const Offset(3450, 3450),
+    _shapeStrokePaint
+      ..color = const Color(0xFF00E5FF).withValues(alpha: 0.16)
+      ..strokeWidth = 2.5;
+    const obeliskOffsets = [
+      Offset(1350, 1350),
+      Offset(3450, 1350),
+      Offset(1350, 3450),
+      Offset(3450, 3450),
     ];
     for (final o in obeliskOffsets) {
-      canvas.drawCircle(
-        o,
-        140,
-        Paint()
-          ..color = const Color(0xFF00E5FF).withValues(alpha: 0.16)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5,
-      );
+      canvas.drawCircle(o, 140, _shapeStrokePaint);
     }
   }
 
   void _renderAegisGraveyardBackdrop(Canvas canvas, Offset center) {
     // Silhuetas de sub-piso dos Cascos de Encouraçados e passarelas laranja
-    final hullPaint = Paint()
-      ..color = const Color(0xFF102820).withValues(alpha: 0.35)
-      ..style = PaintingStyle.fill;
-    final gridPaint = Paint()
+    _shapeFillPaint.color = const Color(0xFF102820).withValues(alpha: 0.35);
+    _shapeStrokePaint
       ..color = const Color(0xFFFF9100).withValues(alpha: 0.25)
-      ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
 
     // Casco Oeste e Casco Leste
     final westHull = Rect.fromCenter(center: const Offset(1450, 2400), width: 700, height: 1900);
     final eastHull = Rect.fromCenter(center: const Offset(3350, 2400), width: 700, height: 1900);
-    canvas.drawRect(westHull, hullPaint);
-    canvas.drawRect(eastHull, hullPaint);
-    canvas.drawRect(westHull, gridPaint);
-    canvas.drawRect(eastHull, gridPaint);
+    canvas.drawRect(westHull, _shapeFillPaint);
+    canvas.drawRect(eastHull, _shapeFillPaint);
+    canvas.drawRect(westHull, _shapeStrokePaint);
+    canvas.drawRect(eastHull, _shapeStrokePaint);
 
     // Passarela superior e inferior ligando os dois cascos
-    canvas.drawRect(Rect.fromCenter(center: const Offset(2400, 1650), width: 1200, height: 90), gridPaint);
-    canvas.drawRect(Rect.fromCenter(center: const Offset(2400, 3150), width: 1200, height: 90), gridPaint);
+    canvas.drawRect(Rect.fromCenter(center: const Offset(2400, 1650), width: 1200, height: 90), _shapeStrokePaint);
+    canvas.drawRect(Rect.fromCenter(center: const Offset(2400, 3150), width: 1200, height: 90), _shapeStrokePaint);
   }
 
   void _renderXenoHiveBackdrop(Canvas canvas, Offset center) {
     // Coração Real Violeta no centro + 6 Veias Neurais Bioluminescentes indo às 6 Alcobas
-    canvas.drawCircle(
-      center,
-      460,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [
-            const Color(0xFFE040FB).withValues(alpha: 0.24),
-            const Color(0xFF880E4F).withValues(alpha: 0.14),
-            Colors.transparent,
-          ],
-        ).createShader(Rect.fromCircle(center: center, radius: 460)),
-    );
+    _drawFocalGradientCircle(canvas, center, 460);
 
-    final veinPaint = Paint()
+    _shapeStrokePaint
       ..color = const Color(0xFF00E676).withValues(alpha: 0.26)
-      ..style = PaintingStyle.stroke
       ..strokeWidth = 4.0;
+    _shapeFillPaint.color = const Color(0xFFFF4081).withValues(alpha: 0.14);
 
-    final alcoves = [
-      const Offset(1150, 1250),
-      const Offset(3650, 1250),
-      const Offset(1050, 2400),
-      const Offset(3750, 2400),
-      const Offset(1150, 3550),
-      const Offset(3650, 3550),
+    const alcoves = [
+      Offset(1150, 1250),
+      Offset(3650, 1250),
+      Offset(1050, 2400),
+      Offset(3750, 2400),
+      Offset(1150, 3550),
+      Offset(3650, 3550),
     ];
     for (final a in alcoves) {
-      canvas.drawLine(center, a, veinPaint);
-      canvas.drawCircle(
-        a,
-        240,
-        Paint()
-          ..color = const Color(0xFFFF4081).withValues(alpha: 0.14)
-          ..style = PaintingStyle.fill,
-      );
+      canvas.drawLine(center, a, _shapeStrokePaint);
+      canvas.drawCircle(a, 240, _shapeFillPaint);
     }
   }
 
   void _renderVoidThroneBackdrop(Canvas canvas, Offset center) {
     // Catedral Astrolábio Circular sobre o Vórtice da Singularidade
-    canvas.drawCircle(
-      center,
-      620,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [
-            const Color(0xFFAA00FF).withValues(alpha: 0.30),
-            const Color(0xFFFFD700).withValues(alpha: 0.14),
-            Colors.transparent,
-          ],
-        ).createShader(Rect.fromCircle(center: center, radius: 620)),
-    );
+    _drawFocalGradientCircle(canvas, center, 620);
 
-    final goldGrid = Paint()
+    _shapeStrokePaint
       ..color = const Color(0xFFFFD700).withValues(alpha: 0.24)
-      ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
-    canvas.drawCircle(center, 620, goldGrid);
-    canvas.drawCircle(center, 1150, goldGrid);
-    canvas.drawCircle(center, 1550, goldGrid);
+    canvas.drawCircle(center, 620, _shapeStrokePaint);
+    canvas.drawCircle(center, 1150, _shapeStrokePaint);
+    canvas.drawCircle(center, 1550, _shapeStrokePaint);
 
     for (int i = 0; i < 12; i++) {
       final a = i * (math.pi / 6) + _animTimer * 0.04;
       final p1 = Offset(center.dx + math.cos(a) * 620, center.dy + math.sin(a) * 620);
       final p2 = Offset(center.dx + math.cos(a) * 1550, center.dy + math.sin(a) * 1550);
-      canvas.drawLine(p1, p2, goldGrid);
+      canvas.drawLine(p1, p2, _shapeStrokePaint);
     }
   }
 }
@@ -410,6 +451,14 @@ class SolarFlameJetComponent extends PositionComponent
   double _cycleTimer = 0.0;
   bool isFiring = false;
   double _damageTick = 0.0;
+
+  static final Paint _nozzlePaint = Paint()..color = const Color(0xFF3E2723);
+  static final Paint _warnPaint = Paint()
+    ..color = const Color(0xFFFF9100).withValues(alpha: 0.35)
+    ..strokeWidth = 3.0;
+  static final Paint _flamePaint = Paint();
+  Shader? _flameShader;
+  double _cachedJetLength = -1;
 
   SolarFlameJetComponent({
     required Vector2 position,
@@ -457,26 +506,28 @@ class SolarFlameJetComponent extends PositionComponent
     // Bocal da fornalha
     canvas.drawRect(
       const Rect.fromLTWH(-16, -20, 32, 40),
-      Paint()..color = const Color(0xFF3E2723),
+      _nozzlePaint,
     );
 
     if (isFiring) {
       final flameRect = Rect.fromLTWH(16, -26, jetLength, 52);
+      if (_cachedJetLength != jetLength || _flameShader == null) {
+        _cachedJetLength = jetLength;
+        _flameShader = const LinearGradient(
+          colors: [Color(0xFFFFF59D), Color(0xFFFF6D00), Color(0x00FF1744)],
+        ).createShader(flameRect);
+      }
+      _flamePaint.shader = _flameShader;
       canvas.drawRRect(
         RRect.fromRectAndRadius(flameRect, const Radius.circular(24)),
-        Paint()
-          ..shader = const LinearGradient(
-            colors: [Color(0xFFFFF59D), Color(0xFFFF6D00), Color(0x00FF1744)],
-          ).createShader(flameRect),
+        _flamePaint,
       );
     } else {
       // Linha tracejada de aviso térmico
       canvas.drawLine(
         const Offset(16, 0),
         Offset(jetLength, 0),
-        Paint()
-          ..color = const Color(0xFFFF9100).withValues(alpha: 0.35)
-          ..strokeWidth = 3.0,
+        _warnPaint,
       );
     }
     canvas.restore();
@@ -522,34 +573,26 @@ class ThermalDomeComponent extends PositionComponent
     } catch (_) {}
   }
 
+  static final Paint _domeFill = Paint()..style = PaintingStyle.fill;
+  static final Paint _domeStroke = Paint()
+    ..color = const Color(0xFFFFD700).withValues(alpha: 0.72)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 3.0;
+  static final Paint _domeCore = Paint()
+    ..color = const Color(0xFFFF6D00).withValues(alpha: 0.85);
+
   @override
   void render(Canvas canvas) {
     canvas.save();
     canvas.translate(radius, radius);
 
     final pulse = 0.14 + math.sin(_pulseTimer) * 0.04;
-    canvas.drawCircle(
-      Offset.zero,
-      radius,
-      Paint()
-        ..color = const Color(0xFFFFB300).withValues(alpha: pulse)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawCircle(
-      Offset.zero,
-      radius,
-      Paint()
-        ..color = const Color(0xFFFFD700).withValues(alpha: 0.72)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0,
-    );
+    _domeFill.color = const Color(0xFFFFB300).withValues(alpha: pulse);
+    canvas.drawCircle(Offset.zero, radius, _domeFill);
+    canvas.drawCircle(Offset.zero, radius, _domeStroke);
 
     // Gerador térmico central
-    canvas.drawCircle(
-      Offset.zero,
-      46,
-      Paint()..color = const Color(0xFFFF6D00).withValues(alpha: 0.85),
-    );
+    canvas.drawCircle(Offset.zero, 46, _domeCore);
     canvas.restore();
   }
 }
@@ -585,25 +628,20 @@ class ReactorLeakHazardComponent extends PositionComponent
     }
   }
 
+  static final Paint _leakFill = Paint()
+    ..color = const Color(0xFF00E676).withValues(alpha: 0.18)
+    ..style = PaintingStyle.fill;
+  static final Paint _leakStroke = Paint()
+    ..color = const Color(0xFF69F0AE).withValues(alpha: 0.55)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.0;
+
   @override
   void render(Canvas canvas) {
     canvas.save();
     canvas.translate(radius, radius);
-    canvas.drawCircle(
-      Offset.zero,
-      radius,
-      Paint()
-        ..color = const Color(0xFF00E676).withValues(alpha: 0.18)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawCircle(
-      Offset.zero,
-      radius,
-      Paint()
-        ..color = const Color(0xFF69F0AE).withValues(alpha: 0.55)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0,
-    );
+    canvas.drawCircle(Offset.zero, radius, _leakFill);
+    canvas.drawCircle(Offset.zero, radius, _leakStroke);
     canvas.restore();
   }
 }
@@ -639,25 +677,20 @@ class AcidPoolHazardComponent extends PositionComponent
     }
   }
 
+  static final Paint _acidFill = Paint()
+    ..color = const Color(0xFF76FF03).withValues(alpha: 0.18)
+    ..style = PaintingStyle.fill;
+  static final Paint _acidStroke = Paint()
+    ..color = const Color(0xFFB2FF59).withValues(alpha: 0.6)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.0;
+
   @override
   void render(Canvas canvas) {
     canvas.save();
     canvas.translate(radius, radius);
-    canvas.drawCircle(
-      Offset.zero,
-      radius,
-      Paint()
-        ..color = const Color(0xFF76FF03).withValues(alpha: 0.18)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawCircle(
-      Offset.zero,
-      radius,
-      Paint()
-        ..color = const Color(0xFFB2FF59).withValues(alpha: 0.6)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0,
-    );
+    canvas.drawCircle(Offset.zero, radius, _acidFill);
+    canvas.drawCircle(Offset.zero, radius, _acidStroke);
     canvas.restore();
   }
 }
@@ -711,6 +744,18 @@ class RelicPedestalComponent extends PositionComponent
     }
   }
 
+  static final Paint _relicHaloPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _relicRingPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 3.0;
+  static final Paint _relicGemPaint = Paint();
+  static final Path _relicCrystalPath = Path()
+    ..moveTo(0, -22)
+    ..lineTo(18, 0)
+    ..lineTo(0, 22)
+    ..lineTo(-18, 0)
+    ..close();
+
   @override
   void render(Canvas canvas) {
     canvas.save();
@@ -719,33 +764,15 @@ class RelicPedestalComponent extends PositionComponent
     final color = relicDef?.color ?? const Color(0xFFFFD700);
     final pulse = 1.0 + math.sin(_pulseTimer) * 0.12;
 
-    canvas.drawCircle(
-      Offset.zero,
-      42 * pulse,
-      Paint()
-        ..color = (isClaimed ? Colors.white24 : color).withValues(alpha: 0.22)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawCircle(
-      Offset.zero,
-      36,
-      Paint()
-        ..color = isClaimed ? Colors.white38 : color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0,
-    );
+    _relicHaloPaint.color = (isClaimed ? Colors.white24 : color).withValues(alpha: 0.22);
+    canvas.drawCircle(Offset.zero, 42 * pulse, _relicHaloPaint);
+
+    _relicRingPaint.color = isClaimed ? Colors.white38 : color;
+    canvas.drawCircle(Offset.zero, 36, _relicRingPaint);
 
     // Cristais do pedestal
-    final path = Path()
-      ..moveTo(0, -22)
-      ..lineTo(18, 0)
-      ..lineTo(0, 22)
-      ..lineTo(-18, 0)
-      ..close();
-    canvas.drawPath(
-      path,
-      Paint()..color = isClaimed ? Colors.white24 : color,
-    );
+    _relicGemPaint.color = isClaimed ? Colors.white24 : color;
+    canvas.drawPath(_relicCrystalPath, _relicGemPaint);
     canvas.restore();
   }
 }
@@ -824,47 +851,42 @@ class StasisCoffinComponent extends PositionComponent
     }
   }
 
+  static final Paint _domeShieldFill = Paint()
+    ..color = const Color(0xFF00E5FF).withValues(alpha: 0.18)
+    ..style = PaintingStyle.fill;
+  static final Paint _domeShieldStroke = Paint()
+    ..color = const Color(0xFF00E5FF)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.8;
+  static final Paint _coffinBodyPaint = Paint();
+  static final Paint _coffinStrokePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.5;
+  static final RRect _coffinRRect = RRect.fromRectAndRadius(
+    const Rect.fromLTWH(-24, -36, 48, 72),
+    const Radius.circular(12),
+  );
+
   @override
   void render(Canvas canvas) {
     canvas.save();
     canvas.translate(size.x / 2, size.y / 2);
 
-    const podColor = Color(0xFF00E5FF);
     if (!isOpened && shieldHp > 0) {
       // Domo de contenção protetor (igual à Stasis Pod Chamber da imagem do Bioma 1)
       canvas.drawCircle(
         Offset.zero,
         52 + math.sin(_pulseTimer) * 4.0,
-        Paint()
-          ..color = podColor.withValues(alpha: 0.18)
-          ..style = PaintingStyle.fill,
+        _domeShieldFill,
       );
-      canvas.drawCircle(
-        Offset.zero,
-        52,
-        Paint()
-          ..color = podColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.8,
-      );
+      canvas.drawCircle(Offset.zero, 52, _domeShieldStroke);
     }
 
     // Cápsula octogonal
-    final rect = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(-24, -36, 48, 72),
-      const Radius.circular(12),
-    );
-    canvas.drawRRect(
-      rect,
-      Paint()..color = isOpened ? Colors.white24 : const Color(0xFF102838),
-    );
-    canvas.drawRRect(
-      rect,
-      Paint()
-        ..color = isOpened ? Colors.white38 : const Color(0xFFFFD700)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5,
-    );
+    _coffinBodyPaint.color = isOpened ? Colors.white24 : const Color(0xFF102838);
+    _coffinStrokePaint.color = isOpened ? Colors.white38 : const Color(0xFFFFD700);
+    canvas.drawRRect(_coffinRRect, _coffinBodyPaint);
+    canvas.drawRRect(_coffinRRect, _coffinStrokePaint);
     canvas.restore();
   }
 }

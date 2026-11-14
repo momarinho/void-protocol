@@ -1,6 +1,5 @@
-import 'dart:io' show Platform;
 import 'dart:math' as math;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:void_protocol/constants.dart';
@@ -42,7 +41,11 @@ class _HudOverlayState extends State<HudOverlay> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _showTouchControls = kIsWeb ? true : (!Platform.isLinux && !Platform.isMacOS && !Platform.isWindows);
+    _showTouchControls = kIsWeb
+        ? true
+        : (defaultTargetPlatform != TargetPlatform.linux &&
+            defaultTargetPlatform != TargetPlatform.macOS &&
+            defaultTargetPlatform != TargetPlatform.windows);
     _lastScore = widget.game.score;
     _displayScore = widget.game.score.toDouble();
     try {
@@ -66,8 +69,9 @@ class _HudOverlayState extends State<HudOverlay> with SingleTickerProviderStateM
       final scoreChanged = targetScore != _lastScore;
 
       _hudAccumulator += dt;
-      // Rebuild reativo: atualiza imediatamente se HP/Score mudou; caso contrário, sincroniza telemetria a 15 FPS (Zero-GC)
-      if (hpChanged || scoreChanged || (widget.game.state == GameState.playing && _hudAccumulator >= 0.066)) {
+      // Rebuild reativo: atualiza imediatamente se HP/Score mudou; no Web usa 10 Hz para reduzir custo Skia/CanvasKit
+      final syncInterval = kIsWeb ? 0.10 : 0.066;
+      if (hpChanged || scoreChanged || (widget.game.state == GameState.playing && _hudAccumulator >= syncInterval)) {
         _hudAccumulator = 0.0;
         if (mounted) {
           setState(() {});
@@ -162,10 +166,11 @@ class _HudOverlayState extends State<HudOverlay> with SingleTickerProviderStateM
     final xpMaxWidth = isNarrow ? (layout.width * 0.62).clamp(160.0, 300.0) : (isCompactHud ? 260.0 : 420.0);
     final touchActionScale = isCompactHud ? 0.78 : 1.0;
 
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.all(layout.hudPadding),
-        child: Stack(
+    return RepaintBoundary(
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(layout.hudPadding),
+          child: Stack(
         children: [
           // Low Hull Dramatic Red Pulsing Vignette (< 25% HP) OR Void Reaper Incursion
           if (hpRatio <= 0.25 || game.voidReaperSpawned)
@@ -1436,7 +1441,8 @@ class _HudOverlayState extends State<HudOverlay> with SingleTickerProviderStateM
             ],
           ),
         ),
-      );
+      ),
+    );
   }
 
   Widget _buildBossCinematicBanner() {

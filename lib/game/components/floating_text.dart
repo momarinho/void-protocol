@@ -9,6 +9,10 @@ class FloatingTextComponent extends PositionComponent {
   double timer = 0.0;
   final Vector2 velocity;
 
+  late final TextPainter _fgPainter;
+  late final TextPainter _shadowPainter;
+  int _lastAlphaStep = -1;
+
   FloatingTextComponent({
     required Vector2 position,
     required this.text,
@@ -18,6 +22,38 @@ class FloatingTextComponent extends PositionComponent {
     Vector2? velocity,
   }) : velocity = velocity ?? Vector2(0, -50) {
     this.position = position;
+    _fgPainter = TextPainter(textDirection: TextDirection.ltr);
+    _shadowPainter = TextPainter(textDirection: TextDirection.ltr);
+    _updatePainters(255);
+  }
+
+  void _updatePainters(int alpha) {
+    final step = alpha >> 4; // 16 discrete opacity buckets (~10 updates across 0.8s)
+    if (step == _lastAlphaStep) return;
+    _lastAlphaStep = step;
+    final steppedAlpha = ((step * 16) + 15).clamp(0, 255);
+
+    _shadowPainter.text = TextSpan(
+      text: text,
+      style: TextStyle(
+        fontFamily: 'Rajdhani',
+        fontSize: fontSize,
+        fontWeight: FontWeight.bold,
+        color: Colors.black.withAlpha(steppedAlpha),
+      ),
+    );
+    _shadowPainter.layout();
+
+    _fgPainter.text = TextSpan(
+      text: text,
+      style: TextStyle(
+        fontFamily: 'Rajdhani',
+        fontSize: fontSize,
+        fontWeight: FontWeight.bold,
+        color: color.withAlpha(steppedAlpha),
+      ),
+    );
+    _fgPainter.layout();
   }
 
   @override
@@ -37,43 +73,25 @@ class FloatingTextComponent extends PositionComponent {
     final alpha = (255 * (1.0 - progress)).clamp(0, 255).toInt();
     if (alpha <= 0) return;
 
+    _updatePainters(alpha);
+
     // Juice scale pop on appearance (Nova Drift / Diablo style)
     final scale = (timer < 0.12)
         ? 1.0 + 0.32 * (1.0 - (timer / 0.12))
         : 1.0;
 
-    canvas.save();
+    final dx = -_fgPainter.width / 2;
+    final dy = -_fgPainter.height / 2;
+
     if (scale != 1.0) {
+      canvas.save();
       canvas.scale(scale);
+      _shadowPainter.paint(canvas, Offset(dx + 1.2, dy + 1.2));
+      _fgPainter.paint(canvas, Offset(dx, dy));
+      canvas.restore();
+    } else {
+      _shadowPainter.paint(canvas, Offset(dx + 1.2, dy + 1.2));
+      _fgPainter.paint(canvas, Offset(dx, dy));
     }
-
-    final textSpan = TextSpan(
-      text: text,
-      style: TextStyle(
-        fontFamily: 'Rajdhani',
-        fontSize: fontSize,
-        fontWeight: FontWeight.bold,
-        color: color.withAlpha(alpha),
-        shadows: [
-          Shadow(
-            color: Colors.black.withAlpha(alpha),
-            blurRadius: 4,
-            offset: const Offset(1, 1),
-          ),
-          Shadow(
-            color: color.withAlpha((alpha * 0.6).toInt()),
-            blurRadius: 8,
-          ),
-        ],
-      ),
-    );
-
-    final textPainter = TextPainter(
-      text: textSpan,
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-    textPainter.paint(canvas, Offset(-textPainter.width / 2, -textPainter.height / 2));
-    canvas.restore();
   }
 }

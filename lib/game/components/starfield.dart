@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 import 'package:flame/components.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:void_protocol/game/asteroids_game.dart';
 import 'package:void_protocol/game/glow.dart';
 import 'package:void_protocol/constants.dart';
-import 'phase4_biome_elements.dart';
 
 class Star {
   Vector2 position;
@@ -143,21 +143,42 @@ class StarfieldComponent extends Component with HasGameReference<AsteroidsGame> 
   static final Paint _baseBgPaint = Paint()..shader = _baseBgShader;
 
   final Paint _blobPaint = Paint()..blendMode = BlendMode.plus;
+  static final Rect _unitBlobRect = Rect.fromCircle(center: Offset.zero, radius: 1.0);
+  final List<int> _cachedBlobKeys = [-1, -1, -1];
+  final List<Shader?> _cachedBlobShaders = [null, null, null];
 
-  void _drawBlob(Canvas canvas, Offset center, double radius, Color color, double alpha) {
+  void _drawBlob(
+    Canvas canvas,
+    int slot,
+    Offset center,
+    double radius,
+    Color color,
+    double alpha,
+  ) {
     if (alpha <= 0.01) return;
     final a = alpha.clamp(0.0, 1.0);
-    final shader = RadialGradient(
-      colors: [
-        color.withValues(alpha: a),
-        color.withValues(alpha: a * 0.35),
-        color.withValues(alpha: 0.0),
-      ],
-      stops: const [0.0, 0.45, 1.0],
-    ).createShader(Rect.fromCircle(center: center, radius: radius));
+    // Quantize alpha to 16 steps so unit radial shaders are reused across frames (Zero-GC)
+    final aStep = (a * 16.0).round().clamp(1, 16);
+    final key = (color.toARGB32() & 0x00FFFFFF) | (aStep << 24);
+    if (_cachedBlobKeys[slot] != key || _cachedBlobShaders[slot] == null) {
+      _cachedBlobKeys[slot] = key;
+      final qAlpha = aStep / 16.0;
+      _cachedBlobShaders[slot] = RadialGradient(
+        colors: [
+          color.withValues(alpha: qAlpha),
+          color.withValues(alpha: qAlpha * 0.35),
+          color.withValues(alpha: 0.0),
+        ],
+        stops: const [0.0, 0.45, 1.0],
+      ).createShader(_unitBlobRect);
+    }
 
-    _blobPaint.shader = shader;
-    canvas.drawCircle(center, radius, _blobPaint);
+    _blobPaint.shader = _cachedBlobShaders[slot];
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.scale(radius, radius);
+    canvas.drawCircle(Offset.zero, 1.0, _blobPaint);
+    canvas.restore();
   }
 
   @override
@@ -181,22 +202,22 @@ class StarfieldComponent extends Component with HasGameReference<AsteroidsGame> 
     canvas.save();
     canvas.translate(camPos.x - viewW / 2, camPos.y - viewH / 2);
 
-    // 1. Gradiente base: desenhado apenas se nenhum BiomeBackdropComponent estiver ativo
-    final hasBiome = game.world.children.any((c) => c is BiomeBackdropComponent);
-    if (!hasBiome) {
+    // 1. Gradiente base: desenhado apenas se nenhum BiomeBackdropComponent estiver ativo (O(1))
+    if (game.activeBiomeBackdropCount == 0) {
       canvas.save();
       canvas.scale(scaleX, scaleY);
       canvas.drawRect(Rect.fromLTWH(0, 0, width, height), _baseBgPaint);
       canvas.restore();
     }
 
-    // 2. Nebulosa em 3 manchas suaves que respiram devagar
+    // 2. Nebulosa em manchas suaves (2 blobs no Web para reduzir overdraw, 3 no desktop)
     final palette = _paletteAt(_shownElapsed);
     final stormK = ((_shownElapsed - 150.0) / 30.0).clamp(0.0, 1.0);
     final stormPulse = 1.0 + 0.35 * stormK * (0.5 + 0.5 * math.sin(_time * 4.0));
 
     _drawBlob(
       canvas,
+      0,
       Offset(
         (width * 0.22 + math.sin(_time * 0.05) * 60) * scaleX,
         (height * 0.30 + math.cos(_time * 0.04) * 40) * scaleY,
@@ -207,6 +228,7 @@ class StarfieldComponent extends Component with HasGameReference<AsteroidsGame> 
     );
     _drawBlob(
       canvas,
+      1,
       Offset(
         (width * 0.80 + math.cos(_time * 0.045) * 70) * scaleX,
         (height * 0.72 + math.sin(_time * 0.06) * 50) * scaleY,
@@ -215,16 +237,19 @@ class StarfieldComponent extends Component with HasGameReference<AsteroidsGame> 
       palette.b,
       0.26 * stormPulse,
     );
-    _drawBlob(
-      canvas,
-      Offset(
-        (width * 0.55 + math.sin(_time * 0.03) * 90) * scaleX,
-        (height * 0.48) * scaleY,
-      ),
-      720 * math.max(scaleX, scaleY),
-      Color.lerp(palette.a, palette.b, 0.5)!,
-      0.10 * stormPulse,
-    );
+    if (!kIsWeb) {
+      _drawBlob(
+        canvas,
+        2,
+        Offset(
+          (width * 0.55 + math.sin(_time * 0.03) * 90) * scaleX,
+          (height * 0.48) * scaleY,
+        ),
+        720 * math.max(scaleX, scaleY),
+        Color.lerp(palette.a, palette.b, 0.5)!,
+        0.10 * stormPulse,
+      );
+    }
 
     // 3. Estrelas com cintilação, tamanho e brilho por camada de profundidade
     for (final star in stars) {
@@ -251,8 +276,8 @@ class StarfieldComponent extends Component with HasGameReference<AsteroidsGame> 
       final alpha = baseAlpha * twinkle;
       final center = Offset(star.position.x * scaleX, star.position.y * scaleY);
 
-      // Estrelas próximas ganham um halo aditivo discreto
-      if (star.layer == 3 && Glow.enabled) {
+      // Estrelas próximas ganham um halo aditivo discreto (pulado no Web para 60 FPS)
+      if (!kIsWeb && star.layer == 3 && Glow.enabled) {
         _haloPaint.color = star.tint.withValues(alpha: 0.18 * twinkle);
         canvas.drawCircle(center, size * 3.2, _haloPaint);
       }
